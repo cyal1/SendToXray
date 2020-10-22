@@ -59,8 +59,8 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory):
             t = m.getRequest()
         r = t.tostring()
         url = str(h.getUrl())
-        headers = h.getHeaders()
-        method = h.getMethod()
+        # headers = h.getHeaders()
+        # method = h.getMethod()
 
         # body = r[h.bodyOffset:]
         # print url
@@ -89,5 +89,3 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory):
         self.menus.append(JMenuItem("Send to XRAY",None,actionPerformed=lambda x: self.eventHandler(x)))
         self.messages = invocation.getSelectedMessages()
         return self.menus
-
-
