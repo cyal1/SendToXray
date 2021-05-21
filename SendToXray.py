@@ -61,13 +61,14 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory):
         try:
             sock.connect((proxy_host, proxy_port))
         except Exception as e:
-            sock.close()
-            print "Connetion XRAY Error: "+str(e)
+            print "Connetion XRAY Error: " + e.__class__.__name__
             self.statusLabel.setText("fail")
             return
+        finally:
+        	if sock:
+        		sock.close()
         print "Connetion XRAY Success!"
         self.statusLabel.setText("success")
-        sock.close()
 
     def eventHandler(self,x):
         proxy_host = self.testHost.getText()
@@ -98,13 +99,14 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory):
         sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         try:
             sock.connect((proxy_host, proxy_port))
+            sock.send(r)
         except Exception:
-            sock.close()
-            print "Connetion Error: Please check your xray proxy settings!"
             self.statusLabel.setText("fail")
+            print e.__class__.__name__
             return
-        sock.send(r)
-        sock.close()
+        finally:
+        	if sock:
+        		sock.close()
         print "Send to XRAY: "+url
 
     def createMenuItems(self, invocation):
