@@ -4,34 +4,29 @@
 from burp import IBurpExtender, ITab
 from burp import IContextMenuFactory
 
-# from java.awt import Color
 from javax.swing import JMenuItem
 from javax.swing import JPanel
-from javax.swing import JLabel,JTextField,JButton
+from javax.swing import JLabel,JTextField,JButton,JCheckBox
+from requests import Request, Session
 import socket
-# import urllib
-# import urllib2
-# import ssl
-# try:
-#  _create_unverified_https_context = ssl._create_unverified_context
-# except AttributeError:
-#  # Legacy Python that doesn't verify HTTPS certificates by default
-#  pass
-# else:
-#  # Handle target environment that doesn't support HTTPS verification
-#  ssl._create_default_https_context = _create_unverified_https_context
+
 
 class BurpExtender(IBurpExtender, ITab, IContextMenuFactory):
+
+    def __init__(self):
+        self.proxy_host = '127.0.0.1'
+        self.port = 9999
 
     def registerExtenderCallbacks(self, callbacks):
         self.messages = []
         self.callbacks = callbacks
         self.helpers = callbacks.getHelpers()
         self.callbacks.setExtensionName('Send to XRAY')
+
         self.mainPanel = JPanel()
         self.testLabel = JLabel("XRAY Prxoy: ")
-        self.testHost = JTextField("127.0.0.1",10)
-        self.testPort = JTextField("9999",4)
+        self.testHost = JTextField(self.proxy_host,10)
+        self.testPort = JTextField(str(self.port),4)
         self.statusLabel = JLabel("")
         # self.testPort.setForeground(Color.RED);
         self.testBtn = JButton('check', actionPerformed=self.statusCheck)
@@ -40,6 +35,8 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory):
         self.mainPanel.add(self.testPort)
         self.mainPanel.add(self.testBtn)
         self.mainPanel.add(self.statusLabel)
+
+
         self.callbacks.customizeUiComponent(self.mainPanel)
         self.callbacks.addSuiteTab(self)
         self.callbacks.registerContextMenuFactory(self)
@@ -55,59 +52,76 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory):
         return self.mainPanel
 
     def statusCheck(self,event=None):
-        proxy_host = self.testHost.getText()
-        proxy_port = int(self.testPort.getText())
+
+        self.proxy_host = self.testHost.getText().strip()
+
+        port = self.testPort.getText().strip()
+        if not port.isdigit():
+            print "Proxy port error!"
+            return
+        self.proxy_port = int(port)
+
         sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+
         try:
-            sock.connect((proxy_host, proxy_port))
+            sock.connect((self.proxy_host, self.proxy_port))
+
         except Exception as e:
             print "Connetion XRAY Error: " + e.__class__.__name__
             self.statusLabel.setText("fail")
-            return
+            return False
+
         finally:
-        	if sock:
-        		sock.close()
+    		sock.close()
+
         print "Connetion XRAY Success!"
         self.statusLabel.setText("success")
+        return True
 
     def eventHandler(self,x):
-        proxy_host = self.testHost.getText()
-        proxy_port = int(self.testPort.getText())
-        for m in self.messages:
-            h = self.helpers.analyzeRequest(m)
-            t = m.getRequest()
-        r = t.tostring()
-        url = str(h.getUrl())
-        # headers = h.getHeaders()
-        # method = h.getMethod()
 
-        # body = r[h.bodyOffset:]
-        # print url
-        # headerd = {}
-        # for x in headers[1:]:
-        #     print x
-        #     x,b = x.split(":",1)
-        # if url.startswith("https"):
-        #     opener=urllib2.build_opener(urllib2.ProxyHandler({"https":"127.0.0.1:9999"}))
-        # else:
-        #     opener=urllib2.build_opener(urllib2.ProxyHandler({"http":"127.0.0.1:9999"}))
+        messageInfo = self.messages[0]
 
-        # req = urllib2.Request(url,data=body,headers=headerd)
-        # req.get_method = lambda: method
-        # print opener.open(req).read()
-        
-        sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        httpService = messageInfo.getHttpService()
+        service = httpService.toString()
+
+        requestInfo = self.helpers.analyzeRequest(messageInfo)
+
+        raw_headers = requestInfo.headers
+
+        method, url, protocol = raw_headers[0].split(" ")
+
+        url = service + url
+
+        headers = dict([[i[0],i[1].strip()] for i in [h.split(':',1) for h in raw_headers[1:]]])
+
+        body = messageInfo.request[requestInfo.getBodyOffset():len(messageInfo.request)]
+
+        proxies = {
+          'http': 'http://{}:{}'.format(self.proxy_host, self.proxy_port),
+          'https': 'http://{}:{}'.format(self.proxy_host, self.proxy_port),
+        }
+
+        s = Session()
+
+        s.proxies.update(proxies)
+
+        req = Request(method, url, data = body.tostring(), headers = headers)
+
+        prepped = req.prepare()
         try:
-            sock.connect((proxy_host, proxy_port))
-            sock.send(r)
-        except Exception:
-            self.statusLabel.setText("fail")
-            print e.__class__.__name__
+            r = s.send(prepped,
+                verify = False,
+                allow_redirects = False,
+                timeout = 3
+            )
+        except Exception as e:
+            print e.__class__.__name__+": ", method, url
+            self.statusCheck()
             return
-        finally:
-        	if sock:
-        		sock.close()
-        print "Send to XRAY: "+url
+
+        print method, url, protocol, r.status_code
+        self.statusLabel.setText("success")
 
     def createMenuItems(self, invocation):
 
